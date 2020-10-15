@@ -4,44 +4,33 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.NotificationCompat;
+import androidx.lifecycle.Observer;
+import androidx.lifecycle.ViewModelProviders;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import android.app.Activity;
+
 import android.app.Dialog;
-import android.app.Notification;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
-import android.content.Context;
-import android.content.Intent;
+
 import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.util.Log;
+
 import android.view.View;
 import android.view.Window;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.TextView;
+
 import android.widget.Toast;
 
-import com.google.firebase.database.ChildEventListener;
-import com.google.firebase.database.DataSnapshot;
-import com.google.firebase.database.DatabaseError;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.ValueEventListener;
 
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
+
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.Random;
 
 public class MainActivity extends AppCompatActivity {
 
     private static int MAX_MESSAGE_LENGTH = 100;
 
-    DatabaseReference database;
 
     EditText mEditTextMessage;
     Button  mSendButton;
@@ -52,9 +41,11 @@ public class MainActivity extends AppCompatActivity {
     int personalId;
     final String NICKNAME = "nickname";
     final String PERSONALID = "personalId";
-    private static final int NOTIFY_ID = 101;
 
-    ArrayList<MyMessage> messages = new ArrayList<>();
+
+    //---
+    private MainViewModel viewModel;
+    //---
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,13 +55,15 @@ public class MainActivity extends AppCompatActivity {
         sPref = getPreferences(MODE_PRIVATE);
         nickname = sPref.getString(NICKNAME, "");
         personalId = sPref.getInt(PERSONALID, 0);
+
+        viewModel = ViewModelProviders.of(this).get(MainViewModel.class);;
+
         if(personalId == 0){
             personalId = new Random().nextInt();
         }
         if (nickname == "") {
             showDialog();
         }
-        Log.d("TAG", "nick is " + nickname);
 
         mEditTextMessage = findViewById(R.id.message_input);
         mSendButton = findViewById(R.id.send_msg_btn);
@@ -78,7 +71,7 @@ public class MainActivity extends AppCompatActivity {
 
         mMessagesRecycler.setLayoutManager(new LinearLayoutManager(this));
 
-        final DataAdapter dataAdapter = new DataAdapter(this, messages, personalId);
+        final DataAdapter dataAdapter = new DataAdapter(getApplicationContext(), viewModel.getData().getValue(), personalId);
         mMessagesRecycler.setAdapter(dataAdapter);
 
 
@@ -86,71 +79,31 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View view) {
 
-                Integer num = new Random().nextInt();
-                database = FirebaseDatabase.getInstance().getReference().child("Message")
-                        .child("Message" + num);
                 String msg = mEditTextMessage.getText().toString();
-
                 if(msg.equals("")){
                     Toast.makeText(getApplicationContext(), "Введите сообщение!", Toast.LENGTH_SHORT).show();
                     return;
                 }
-
                 if(msg.length() > MAX_MESSAGE_LENGTH){
                     Toast.makeText(getApplicationContext(), "Слишком длинное сообщение!", Toast.LENGTH_SHORT).show();
                     return;
                 }
                 if(nickname != "") {
-                    DateFormat df = new SimpleDateFormat("d MMM yyyy, HH:mm");
-                    String date = df.format(Calendar.getInstance().getTime());
-                    MyMessage m = new MyMessage(msg, nickname, personalId, date);
-                    database.getRef().setValue(m);
+                    viewModel.addMessage(msg, nickname, personalId);
                     mEditTextMessage.setText("");
                 }else{
                     showDialog();
                 }
-
-
             }
         });
 
-          database = FirebaseDatabase.getInstance().getReference().child("Message");
-
-
-        database.addChildEventListener(new ChildEventListener() {
+        final Observer<ArrayList<MyMessage>> nameObserver = new Observer<ArrayList<MyMessage>>() {
             @Override
-            public void onChildAdded(@NonNull DataSnapshot dataSnapshot, @Nullable String s) {
-                MyMessage p = dataSnapshot.getValue(MyMessage.class);
-//                if(p.getNickname() != null){
-                messages.add(p);
-                Log.d("TAG", "1 my nick is  " + p.getNickname() + "  " + p.getMessage());
+            public void onChanged(ArrayList<MyMessage> myMessages) {
                 dataAdapter.notifyDataSetChanged();
-                mMessagesRecycler.smoothScrollToPosition(messages.size());
             }
-//            }
-
-            @Override
-            public void onChildChanged(@NonNull DataSnapshot dataSnapshot, @Nullable String s) {
-
-            }
-
-            @Override
-            public void onChildRemoved(@NonNull DataSnapshot dataSnapshot) {
-
-            }
-
-            @Override
-            public void onChildMoved(@NonNull DataSnapshot dataSnapshot, @Nullable String s) {
-
-            }
-
-            @Override
-            public void onCancelled(@NonNull DatabaseError databaseError) {
-
-            }
-        });
-
-
+        };
+        viewModel.getData().observe(this, nameObserver);
     }
 
 
@@ -162,11 +115,12 @@ public class MainActivity extends AppCompatActivity {
 
         final EditText editText = dialog.findViewById(R.id.editTextDialog);
 
-        dialogButtonOk = (Button) dialog.findViewById(R.id.btnOk);
+        dialogButtonOk = dialog.findViewById(R.id.btnOk);
         dialogButtonOk.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if(editText.getText().toString() != ""){
+                if(editText.getText().toString() != "")
+                {
                     nickname = editText.getText().toString();
                 }
                 sPref = getPreferences(MODE_PRIVATE);
@@ -178,7 +132,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        dialogButtonCancel = (Button) dialog.findViewById(R.id.btnCancel);
+        dialogButtonCancel = dialog.findViewById(R.id.btnCancel);
         dialogButtonCancel.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
